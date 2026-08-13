@@ -1,12 +1,20 @@
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, MAX_CONTEXT_MESSAGES } from "@dikabuff/shared";
 import type { DikaConfig, ModelPreset } from "@dikabuff/shared";
 
+/**
+ * Pre-configured gateway written into the generated `~/.dikabuff/config.json`
+ * so a fresh install only needs its API key (empty placeholder below).
+ * Users can override everything with `dikabuff config set …`.
+ */
+export const DEFAULT_GATEWAY_URL = "https://ai.krynox.dev/v1";
+
 export function defaultConfig(version: string): DikaConfig {
   return {
     version,
-    provider: "mock",
-    model: "dikabuff-mock-1",
-    apiKey: undefined,
+    provider: "ollama",
+    model: "oc/deepseek-v4-flash-free",
+    baseUrl: DEFAULT_GATEWAY_URL,
+    apiKey: "",
     temperature: DEFAULT_TEMPERATURE,
     maxTokens: DEFAULT_MAX_TOKENS,
     theme: "dark",

@@ -201,6 +201,7 @@ export class Container implements CliContext {
         sessionId: session.agent.session.id,
         permissionMode: this.config.get().permissionMode,
         mock: this.config.get().provider === "mock",
+        noApiKey: this.config.get().provider !== "mock" && !this.config.get().apiKey,
       },
       onExit: () => (this.interactive = null),
     });
@@ -487,6 +488,7 @@ function hostStatus(host: Container, session?: SessionInfo): StatusInfo {
     sessionId: session?.id,
     permissionMode: host.config.get().permissionMode,
     mock: host.config.get().provider === "mock",
+    noApiKey: host.config.get().provider !== "mock" && !host.config.get().apiKey,
   };
 }
 

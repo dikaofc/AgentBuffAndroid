@@ -54,7 +54,8 @@ export function StatusBar({
     phase === "idle" ? "idle" : phase === "thinking" ? "thinking" : phase === "streaming" ? "streaming" : phase === "awaiting-permission" ? "ask" : "error";
   const title = status.sessionTitle && status.sessionTitle.length > 30 ? status.sessionTitle.slice(0, 29) + "…" : status.sessionTitle;
   const modeLabel = status.permissionMode && status.permissionMode !== "default" ? status.permissionMode : undefined;
-  const rest = [status.mock ? "MOCK" : undefined, status.model, status.mode, modeLabel, shortCwd(status.cwd)].filter(Boolean).join(" · ");
+  const badge = status.mock ? "MOCK" : status.noApiKey ? "NO-KEY" : undefined;
+  const rest = [badge, status.model, status.mode, modeLabel, shortCwd(status.cwd)].filter(Boolean).join(" · ");
   return (
     <Box borderStyle="round" borderColor={theme.border} paddingX={1} justifyContent="space-between" width="100%">
       <Box flexShrink={1} minWidth={0}>

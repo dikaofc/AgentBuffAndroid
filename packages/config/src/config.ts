@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import type { DikaConfig, ModelPreset, ProviderKind } from "@dikabuff/shared";
 import { CONFIG_DIR, VERSION } from "@dikabuff/shared";
-import { defaultConfig, DEFAULT_MODELS, maskSecrets } from "./defaults";
+import { defaultConfig, DEFAULT_GATEWAY_URL, DEFAULT_MODELS, maskSecrets } from "./defaults";
 
 export interface ConfigPaths {
   homeDir: string;
@@ -49,7 +49,9 @@ export function absorbLegacyConfig(legacyPath: string, config: DikaConfig): { ch
     const raw = JSON.parse(readFileSync(legacyPath, "utf8")) as LegacyProviderConfig;
     const provider = raw.providers?.["ollama"] ?? raw.providers?.["openai"];
     if (provider) {
-      if (provider.baseUrl && !config.baseUrl) {
+      // The pre-configured gateway default counts as "not set" so a legacy
+      // config with its own gateway still wins the migration.
+      if (provider.baseUrl && (!config.baseUrl || config.baseUrl === DEFAULT_GATEWAY_URL)) {
         config.baseUrl = provider.baseUrl;
         notes.push(`Adopted legacy baseUrl ${provider.baseUrl}`);
       }

@@ -17,7 +17,7 @@ function shortCwd(cwd: string): string {
 export function Welcome({
   status,
 }: {
-  status: { model: string; cwd: string; mode: string; mock?: boolean };
+  status: { model: string; cwd: string; mode: string; mock?: boolean; noApiKey?: boolean };
 }): React.JSX.Element {
   const theme = useTheme();
   const { stdout } = useStdout();
@@ -48,6 +48,15 @@ export function Welcome({
           </Text>
           <Text color={theme.warning} dimColor wrap="truncate">
             set up a real provider: dikabuff config set provider ollama / baseUrl / apiKey / model
+          </Text>
+        </Box>
+      ) : status.noApiKey ? (
+        <Box flexDirection="column" gap={0}>
+          <Text color={theme.warning} bold wrap="truncate">
+            ⚠ NO API KEY — add yours to ~/.dikabuff/config.json (everything else is pre-configured)
+          </Text>
+          <Text color={theme.warning} dimColor wrap="truncate">
+            quick: dikabuff config set apiKey sk-...
           </Text>
         </Box>
       ) : null}

@@ -111,8 +111,16 @@ npm run typecheck && npm test
 
 ## ⚙️ Configuration
 
-Created at `~/.dikabuff/config.json` on first run. A sanitized template is committed as
-[`config.example.json`](config.example.json) — copy it to `config.json` and set your gateway:
+On first run the CLI **auto-generates** `~/.dikabuff/` (config folder) with a pre-configured
+`config.json` — **you only need to add your API key**:
+
+```bash
+dikabuff config set apiKey sk-...
+# or edit ~/.dikabuff/config.json directly
+```
+
+A sanitized template is also committed as [`config.example.json`](config.example.json).
+Everything is overridable:
 
 ```bash
 dikabuff config set provider ollama

@@ -15,5 +15,5 @@ export async function initCommand(ctx: CliContext): Promise<void> {
   logInfo(`model:    ${cfg.model}`);
   logInfo(`theme:    ${cfg.theme}`);
   if (cfg.baseUrl) logInfo(`baseUrl:  ${cfg.baseUrl}`);
-  logInfo("\nNext: set your model credentials in ~/.dikabuff/config.json, then run `dikabuff`.");
+  logInfo("\nNext: open ~/.dikabuff/config.json and replace the empty apiKey with yours, then run `dikabuff`.");
 }

@@ -44,6 +44,8 @@ export interface StatusInfo {
   permissionMode?: string;
   /** True when the mock provider is active — offline demo, replies are canned. */
   mock?: boolean;
+  /** True when a real provider is set but no apiKey is configured yet. */
+  noApiKey?: boolean;
 }
 
 // SessionListEntry lives in @dikabuff/shared and is re-exported above.
