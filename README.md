@@ -1,5 +1,7 @@
 # DikaBuff Agent CLI
 
+[![CI](https://github.com/dikaofc/AgentBuffAndroid/actions/workflows/ci.yml/badge.svg)](https://github.com/dikaofc/AgentBuffAndroid/actions/workflows/ci.yml)
+
 **AI coding intelligence in your terminal** — a terminal-native AI coding agent built for
 Android Termux (and any POSIX terminal), with your own AI backend (OpenAI-compatible gateways
 like OmniRoute, 9Router, OpenRouter, or any local server).
