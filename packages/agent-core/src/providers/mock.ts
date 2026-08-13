@@ -68,6 +68,14 @@ export class MockProvider implements LLMProvider {
   }
 }
 
+/**
+ * Every mock reply opens with an explicit offline-demo warning so canned
+ * answers can never be mistaken for real AI output.
+ */
+const MOCK_WARNING =
+  "⚠️ **MOCK offline demo** — this is a canned reply, not real AI. Set up a real provider:" +
+  " `dikabuff config set provider ollama` (then baseUrl, apiKey, model) or copy `config.example.json`.";
+
 function findToolResult(messages: ProviderMessage[], toolName: string): string {
   return (
     [...messages]
@@ -100,6 +108,8 @@ function buildAnswer(messages: ProviderMessage[], scan: Record<string, any>): st
   ].filter(Boolean);
 
   return [
+    MOCK_WARNING,
+    "",
     `## Analysis for: ${truncate(userMsg, 80)}`,
     "",
     "I scanned the project and gathered context.",
@@ -136,8 +146,12 @@ function directAnswer(content: string): string {
   const topic = truncate(content, 80);
   const clean = content.toLowerCase().trim();
 
+  const warning = MOCK_WARNING;
+
   if (/who are you|your name|what are you|siapa kamu|kamu siapa/.test(clean)) {
     return [
+      warning,
+      "",
       `I'm ${PRODUCT_NAME} Agent — a terminal-native AI coding partner (CLI v${VERSION}).`,
       "I can read files, edit code, and run commands in this project — but for quick questions",
       "like this I answer instantly without scanning everything first.",
@@ -148,6 +162,8 @@ function directAnswer(content: string): string {
 
   if (/^(hi|hii+|hallo|hello|hey|halo|hai|yo|p|morning|assalamualaikum|selamat pagi|selamat siang)\b/.test(clean)) {
     return [
+      warning,
+      "",
       `Heya — ${PRODUCT_NAME} Agent here (v${VERSION}).`,
       "",
       "Quick-response mode is on, so I answered instantly without scanning the repo.",
@@ -157,6 +173,8 @@ function directAnswer(content: string): string {
 
   if (/thank|terima kasih|makasih|thanks/.test(clean)) {
     return [
+      warning,
+      "",
       "Anytime! 😊",
       "",
       "Quick-response mode is on — I answer casual messages instantly without scanning.",
@@ -165,6 +183,8 @@ function directAnswer(content: string): string {
   }
 
   return [
+    warning,
+    "",
     `Got it${topic ? ` — "${topic}"` : ""}.`,
     "",
     "Quick response mode: I answered without scanning the project so this stays fast.",

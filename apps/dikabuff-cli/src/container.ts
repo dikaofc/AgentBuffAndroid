@@ -200,6 +200,7 @@ export class Container implements CliContext {
         sessionTitle: session.agent.session.title,
         sessionId: session.agent.session.id,
         permissionMode: this.config.get().permissionMode,
+        mock: this.config.get().provider === "mock",
       },
       onExit: () => (this.interactive = null),
     });
@@ -485,6 +486,7 @@ function hostStatus(host: Container, session?: SessionInfo): StatusInfo {
     sessionTitle: session?.title ?? "",
     sessionId: session?.id,
     permissionMode: host.config.get().permissionMode,
+    mock: host.config.get().provider === "mock",
   };
 }
 

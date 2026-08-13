@@ -17,7 +17,7 @@ function shortCwd(cwd: string): string {
 export function Welcome({
   status,
 }: {
-  status: { model: string; cwd: string; mode: string };
+  status: { model: string; cwd: string; mode: string; mock?: boolean };
 }): React.JSX.Element {
   const theme = useTheme();
   const { stdout } = useStdout();
@@ -41,6 +41,16 @@ export function Welcome({
       <Text color={theme.border} dimColor>
         /mode plan|code · /permissions · /model · /clear · /compact · /cost · /status · /memory{caret}
       </Text>
+      {status.mock ? (
+        <Box flexDirection="column" gap={0}>
+          <Text color={theme.warning} bold wrap="truncate">
+            ⚠ MOCK MODE — replies are canned offline demos, not real AI
+          </Text>
+          <Text color={theme.warning} dimColor wrap="truncate">
+            set up a real provider: dikabuff config set provider ollama / baseUrl / apiKey / model
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

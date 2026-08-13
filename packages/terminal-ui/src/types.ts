@@ -42,6 +42,8 @@ export interface StatusInfo {
   sessionId?: string;
   /** Global permission mode label shown in the status bar. */
   permissionMode?: string;
+  /** True when the mock provider is active — offline demo, replies are canned. */
+  mock?: boolean;
 }
 
 // SessionListEntry lives in @dikabuff/shared and is re-exported above.
