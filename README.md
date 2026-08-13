@@ -1,111 +1,208 @@
-# DikaBuff Agent CLI
-
-[![CI](https://github.com/dikaofc/AgentBuffAndroid/actions/workflows/ci.yml/badge.svg)](https://github.com/dikaofc/AgentBuffAndroid/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/dikaofc/AgentBuffAndroid)](https://github.com/dikaofc/AgentBuffAndroid/releases)
+# ◈ DikaBuff Agent CLI
 
 **AI coding intelligence in your terminal** — a terminal-native AI coding agent built for
-Android Termux (and any POSIX terminal), with your own AI backend (OpenAI-compatible gateways
-like OmniRoute, 9Router, OpenRouter, or any local server).
+**Android Termux** (and any POSIX terminal). Bring your own backend: OpenAI-compatible
+gateways (OmniRoute, 9Router, OpenRouter, or any local server).
 
-Monorepo: 9 packages, Ink 5 terminal UI, agent loop with 5 modes, 15 built-in tools,
-permission dialogs + 4 permission modes, memory, sessions, plugins, 5 themes, live slash
-commands, live activity line (animated "what the AI is doing"), ask-the-user dialogs
-(answer/reject), keyless web search, cost tracking, context compaction, auto-learning
-(episodes → patterns → auto-created tools), 11 CLI commands.
+[![CI](https://github.com/dikaofc/AgentBuffAndroid/actions/workflows/ci.yml/badge.svg)](https://github.com/dikaofc/AgentBuffAndroid/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/dikaofc/AgentBuffAndroid)](https://github.com/dikaofc/AgentBuffAndroid/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+---
+
+## 📟 Live preview
+
+```text
+  ◈ DikaBuff Agent CLI
+
+  dikabuff-mock-1 · code · ~/DIKABUFF
+
+  ────────────────────────────────────
+
+  type a request (or /help) — quick chats answer instantly, no scan
+
+  /mode plan|code · /permissions · /model · /clear · /compact · /cost · /status · /memory
+
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ›                                                                                              │
+│ Enter send · Shift+Enter newline · ↑ history · / for commands                                  │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ● idle · dikabuff-mock-1 · code · ~/DIKABUFF · dikabuff se… ^Q quit  ^M model  Esc sidebar /help│
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+```text
+── User ──
+  what is this project
+
+── DikaBuff ──
+  ## Analysis for: what is this project
+  I scanned the project and gathered context.
+  • Top-level: .github, .gitignore, LICENSE, README.md, apps, docs, packages…
+  • Git: branch master (clean)
+
+  ## Plan
+  1. Understand — read the relevant modules under the matching entry points.
+  2. Implement — apply minimal, idiomatic edits with focused diffs.
+  4. Report — summarize changes, files touched, and how to verify them.
+
+ ✓ project_scan (380ms)
+```
+
+---
+
+## ✨ Features
+
+| | |
+|---|---|
+| 🖥️ **Beautiful Ink 5 TUI** | chat panel, activity line, tool-execution panel, sub-agent panel, diff viewer, permission dialogs, file tree sidebar |
+| 🤖 **Agent loop, 5 modes** | `code` · `plan` · `review` · `fix` · `analyze` with a planner, context packing & auto-compaction |
+| 🛠️ **17 built-in tools** | `read_file` · `search_files` · `write_file` · `edit_file` · `execute_command` · `project_scan` · `git_status` · `git_diff` · `run_tests` · `lint` · `web_search` · `ask_user` · `subagent` · `code_summary` · `dependency_analysis` · `install_package` · `delete_file` |
+| 🔐 **Permission system** | 4 modes (`default` · `acceptEdits` · `plan` · `bypassPermissions`) + per-tool permission dialogs |
+| 🧠 **Long-term memory** | KV store, session store, project notes (`DIKABUFF.md` auto-loaded) |
+| 🎓 **Auto-learning** | every run is an episode → patterns detected → **macro tools auto-created** & saved globally |
+| 🌐 **Bring your own model** | any OpenAI-compatible gateway — OmniRoute, 9Router, OpenRouter, Ollama, local servers |
+| 💰 **Cost tracking** | live `/cost`, model pricing presets, usage in run JSON |
+| 🔎 **Keyless web search** | built-in `web_search` tool, no API key required |
+| 🎨 **5 themes** | `dark` · `amoled` · `dracula` · `catppuccin` · `minimal` |
+| 🔌 **Plugins** | plugin SDK, loader, marketplace (`plugin install <name>`) |
+| 📦 **12 CLI commands** | `init` `chat` `run` `analyze` `review` `fix` `memory` `plugin` `config` `update` `doctor` `learn` |
+
+---
+
+## 📱 Install on Termux
+
+```bash
+pkg install nodejs git -y
+git clone https://github.com/dikaofc/AgentBuffAndroid.git
+cd AgentBuffAndroid
+sh install.sh
+```
+
+The installer detects Termux automatically, builds the CLI, installs the `dikabuff`
+command into `$PREFIX/bin`, and adds it to your PATH. On Linux/macOS it uses
+`~/.local/bin` (or `/usr/local/bin` with `--system`).
+
+> No backend handy? The default **mock provider** demos the full loop offline.
+
+## 🚀 Quickstart
+
+```bash
+dikabuff                                    # interactive session
+dikabuff "explain this repo"                # one-shot
+dikabuff run "add tests for utils"          # headless run
+dikabuff run "analyze" --output-format json # machine-readable output
+dikabuff chat --permission-mode plan        # read-only session
+dikabuff doctor                             # diagnose config + connectivity
+dikabuff learn                              # auto-learning status
+```
+
+### Development (from source)
+
+```bash
+npm install
+npm run build
+npm run dikabuff             # or: npm run dev (tsx from source)
+npm run typecheck && npm test
+```
+
+---
+
+## ⚙️ Configuration
+
+Created at `~/.dikabuff/config.json` on first run. A sanitized template is committed as
+[`config.example.json`](config.example.json) — copy it to `config.json` and set your gateway:
+
+```bash
+dikabuff config set provider ollama
+dikabuff config set baseUrl https://your-gateway.example.com/v1
+dikabuff config set model your/model-id
+dikabuff config set apiKey sk-...
+dikabuff config theme catppuccin           # switch theme
+```
+
+```jsonc
+// ~/.dikabuff/config.json
+{
+  "provider": "ollama",
+  "model": "oc/deepseek-v4-flash-free",
+  "baseUrl": "https://your-gateway.example.com/v1",
+  "theme": "dark",
+  "permissionMode": "default",
+  "learn": { "enabled": true, "minPatternHits": 2, "maxSteps": 3, "maxTools": 20 }
+}
+```
+
+### Slash commands
+
+| Command | Action |
+|---|---|
+| `/mode` | switch agent mode (`code`/`plan`/…) |
+| `/permissions` | set permission mode: `default` `acceptEdits` `plan` `bypassPermissions` |
+| `/model` | switch model |
+| `/theme` | switch theme |
+| `/compact` | compact context now |
+| `/cost` | live token & cost usage |
+| `/status` | session status |
+| `/memory` | inspect long-term memory |
+| `/doctor` | diagnostics |
+| `/learn` | auto-learning status |
+| `/review` · `/fix` | review / fix the working tree |
+| `/new` · `/resume` | new / resume session |
+| `/help` · `/clear` · `/quit` | help / clear / quit |
+
+---
+
+## 🎓 Auto-learning
+
+DikaBuff learns every time it runs:
+
+1. Each agent run is recorded as an **episode** (which tools ran, in what order, success/failure).
+2. Repeated successful tool sequences become **patterns** (rolled into daily stats under `~/.dikabuff/learn/`).
+3. New patterns **auto-create macro tools**, auto-saved globally and available in every project.
+
+Learned tools are read-only compositions of existing tools — they replay through the same
+permission pipeline (no bypass), with recursion and depth guards.
+
+---
+
+## 🏗️ Architecture
 
 ```
-◈ DikaBuff
+◈ DikaBuff (9 packages)
   ├── apps/dikabuff-cli     bin `dikabuff` (DI container, entry)
   ├── packages/
   │   ├── shared            types · constants · ansi · ids · logger
   │   ├── config            ConfigManager · 5 themes · model presets
   │   ├── memory            KV/session stores · vector index (JSON default, SQLite opt-in)
-  │   ├── tools             ToolRegistry · permission tiers · 15 built-ins (incl. web_search, ask_user)
+  │   ├── tools             ToolRegistry · permission tiers · 17 built-ins
   │   ├── agent-core        agent loop · modes · providers (openai-compatible + mock)
-  │   ├── learner           auto-learning: episodes · pattern detection · macro-tool synthesis
+  │   ├── learner           auto-learning: episodes → patterns → macro tools
   │   ├── terminal-ui       Ink app: AppShell · UiStore · markdown engine
   │   ├── plugins           plugin SDK · loader · marketplace
   │   └── cli               commander program · headless commands
   ├── docs/                 ARCHITECTURE · UX · DATABASE · API · ROADMAP
-  └── examples/legacy/      archived v0.2.0 single-file dikabuff
+  └── examples/legacy/      archived single-file dikabuff
 ```
 
-## Quickstart
-
-```bash
-npm install
-npm run build
-npm run dikabuff            # interactive agent (mock provider works offline)
-npm run dikabuff -- --help
-```
-
-```bash
-dikabuff "explain this repo"          # one-shot
-dikabuff run "add tests for utils"    # headless run
-dikabuff run "fix lint" -p            # print mode: plain answer to stdout
-dikabuff run "analyze" --output-format json   # machine-readable output
-dikabuff chat --permission-mode plan  # read-only session
-cd ~/project && echo "# rules" > DIKABUFF.md   # project memory, auto-loaded
-dikabuff config theme catppuccin     # switch theme
-dikabuff doctor                       # diagnose config + connectivity
-dikabuff learn                        # auto-learning status (episodes, patterns, tools)
-dikabuff chat                         # interactive session
-```
-
-In the interactive TUI: `/help` lists all slash commands — `/mode`, `/permissions`
-(`default|acceptEdits|plan|bypassPermissions`), `/model`, `/theme`, `/clear`,
-`/compact`, `/cost`, `/status`, `/memory`, `/doctor`, `/learn`, `/review`, `/new`,
-`/resume`, `/quit`.
-Long conversations auto-compact to save tokens; `/cost` shows live usage.
-
-## Auto-learning
-
-DikaBuff learns every time it runs. Each agent run is recorded as an **episode**
-(which tools ran, in what order, success/failure). Every CLI start runs a learning pass:
-
-1. Rolls episodes into **daily stats** (`~/.dikabuff/learn/daily/<date>.json`).
-2. Detects **repeated successful tool sequences** (patterns).
-3. **Auto-creates a macro tool** for each new pattern, **auto-saves** it to
-   `~/.dikabuff/learn/tools/`, and registers it — available in every project.
-
-Learned tools are read-only compositions of tools that already exist: calling them
-replays the steps through the same permission pipeline (no bypass), with recursion
-and depth guards. Tune behavior in config:
-
-```jsonc
-{ "learn": { "enabled": true, "minPatternHits": 2, "maxSteps": 3, "maxTools": 20, "maxEpisodesPerDay": 200 } }
-```
-
-## Configuration
-
-Created at `~/.dikabuff/config.json` on first run. The **legacy `config.json` at the
-repository root is absorbed automatically** (`providers.ollama` shape), so the existing
-gateway keeps working. A sanitized template is committed as `config.example.json` — copy
-it to `config.json` (never commit your real keys):
-
-```bash
-dikabuff config set provider ollama
-dikabuff config set baseUrl http://localhost:7777/v1
-dikabuff config set model oc/deepseek-v4-flash-free
-```
-
-No backend handy? The default `mock` provider lets you demo the full loop offline.
-
-## Development
-
-```bash
-npm run dev                 # tsx: run the app from source
-npm run typecheck
-npm test
-npm run build
-npm run docs                # regenerate docs index + link check
-```
-
-## Documentation
+## 📚 Documentation
 
 [Architecture](docs/ARCHITECTURE.md) · [UX](docs/UX.md) · [Database](docs/DATABASE.md) ·
 [API](docs/API.md) · [Roadmap](docs/ROADMAP.md)
 
-## License
+## 🤝 Contributing
 
-MIT — you own your prompts, your tools, and your terminal. Run responsibly: every
-permission dialog is there for a reason.
+```bash
+npm run typecheck   # strict TypeScript
+npm test            # vitest (42 tests)
+npm run build       # tsup, all workspaces
+npm run docs        # docs index + link check
+```
+
+CI runs all of the above on every push and PR — keep it green.
+
+## 📄 License
+
+[MIT](LICENSE) — you own your prompts, your tools, and your terminal. Run responsibly:
+every permission dialog is there for a reason.
