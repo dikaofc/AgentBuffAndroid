@@ -10,6 +10,9 @@ coverage/
 .dikabuff-data/
 apps/dikabuff-cli/bundle/
 
+# tsup config bundling temp files
+*.bundled_*.mjs
+
 # Local config holds real API keys — never commit
 config.json
 
