@@ -1,0 +1,22 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+.DS_Store
+coverage/
+.env
+.env.*
+!examples/.env.example
+.dikabuff-data/
+apps/dikabuff-cli/bundle/
+
+# Local config holds real API keys — never commit
+config.json
+
+# Dev/test homes (sessions, memory, logs)
+.sh/
+.shpty/
+
+# Old UI backup / leftover debug artifacts
+ui-old-backup/
+.dk-*

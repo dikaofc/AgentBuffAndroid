@@ -1,0 +1,29 @@
+{
+  "name": "@dikabuff/learner",
+  "version": "0.5.0",
+  "description": "DikaBuff — auto-learning: records runs, detects repeated successful tool sequences, auto-creates and auto-saves reusable macro tools (global)",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run tests"
+  },
+  "dependencies": {
+    "@dikabuff/shared": "0.5.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10"
+  }
+}

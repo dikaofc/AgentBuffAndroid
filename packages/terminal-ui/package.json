@@ -1,0 +1,34 @@
+{
+  "name": "@dikabuff/terminal-ui",
+  "version": "0.5.0",
+  "description": "DikaBuff — Ink-based premium terminal interface: chat, thinking, tools, diffs, dialogs",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run tests"
+  },
+  "dependencies": {
+    "@dikabuff/shared": "0.5.0",
+    "@dikabuff/config": "0.5.0",
+    "@dikabuff/agent-core": "0.5.0",
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10"
+  }
+}

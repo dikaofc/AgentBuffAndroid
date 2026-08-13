@@ -1,0 +1,42 @@
+{
+  "name": "dikabuff",
+  "version": "0.5.0",
+  "private": true,
+  "description": "DikaBuff Agent CLI — next-generation AI coding agent for the terminal (monorepo)",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "tsx apps/dikabuff-cli/src/index.ts",
+    "start": "node apps/dikabuff-cli/dist/index.js",
+    "dikabuff": "node apps/dikabuff-cli/dist/index.js",
+    "typecheck": "tsc --noEmit --pretty false -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "rm -rf packages/*/dist apps/*/dist packages/*/tsconfig.tsbuildinfo apps/*/tsconfig.tsbuildinfo",
+    "docs": "node scripts/gen-docs.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "tsx": "^4.19.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
+  }
+}

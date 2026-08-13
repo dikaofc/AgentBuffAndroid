@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@dikabuff/shared": ["packages/shared/src/index.ts"],
+      "@dikabuff/config": ["packages/config/src/index.ts"],
+      "@dikabuff/memory": ["packages/memory/src/index.ts"],
+      "@dikabuff/tools": ["packages/tools/src/index.ts"],
+      "@dikabuff/learner": ["packages/learner/src/index.ts"],
+      "@dikabuff/agent-core": ["packages/agent-core/src/index.ts"],
+      "@dikabuff/plugins": ["packages/plugins/src/index.ts"],
+      "@dikabuff/terminal-ui": ["packages/terminal-ui/src/index.tsx"],
+      "@dikabuff/cli": ["packages/cli/src/index.ts"]
+    },
+    "lib": ["ES2022"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "types": ["node"]
+  }
+}

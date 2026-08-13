@@ -1,0 +1,628 @@
+#!/data/data/com.termux/files/usr/bin/env -S node
+// dikabuff — coding agent CLI untuk Android/Termux (BYO AI backend, openai-completions).
+// v0.2.0: streaming + thinking abu-abu (reasoning_content) + chat box UI + render markdown/tag.
+import { createInterface } from "node:readline";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+
+const VERSION = "0.2.0";
+const DIKABUFF_DIR = path.join(os.homedir(), "DIKABUFF");
+const CONFIG_PATH_DEFAULT = path.join(DIKABUFF_DIR, "config.json");
+const MAX_TOOL_ROUNDS = 14;
+const MAX_TOOL_OUT = 100000;
+const MAX_FETCH = 524288;
+
+const SAMPLE_CONFIG = {
+  providers: {
+    ollama: {
+      baseUrl: "http://localhost:7777/v1",
+      api: "openai-completions",
+      apiKey: "sk-REPLACE_ME",
+      models: [{ id: "oc/deepseek-v4-flash-free" }],
+    },
+  },
+};
+
+const MAIN_SYS = `You are Dikabuff, a capable autonomous coding agent running on Android Termux.
+You operate the terminal like a skilled human would:
+- Read, write, and edit files with the file tools.
+- Run shell commands with the bash tool for builds, tests, grep, curl, package installs, etc.
+- Fetch web pages when you need information.
+- Delegate heavy parallel research or implementation work to the subagent tool.
+
+Guidelines:
+- Work step by step and VERIFY your work (run the command, read the result, fix errors).
+- Prefer small precise edits over rewriting whole files.
+- Use bash for anything terminal-related; use web_fetch for simple HTTP GETs; curl is available for anything more complex (POST, headers, download).
+- Never invent results: if a tool errors, read the error and adapt.
+- Keep code idiomatic and robust.
+- Always finish with a short summary of what you changed, commands you ran, and current state.
+- Reply in the user's language.`;
+
+const SUB_SYS = `You are a sub-agent of Dikabuff. A parent agent delegated you a task.
+Complete it using the available tools (bash, read_file, write_file, edit_file, list_dir, web_fetch).
+Do not ask questions — make reasonable decisions and get it done.
+Return ONLY a concise summary (max 30 lines): what you did, files touched, results/verification.`;
+
+// ---------- color / tty ----------
+const COLOR = process.env.FBAI_COLOR ? true : (process.stdout.isTTY || !!process.env.FORCE_COLOR);
+const TTY = !!process.stdout.isTTY;
+const boxW = () => Math.min(92, Math.max(40, (process.stdout.columns || 92) - 2));
+// streaming dipakai di TTY; FBAI_FORCE_STREAM untuk mode non-TTY (uji/debug), FBAI_NO_STREAM=1 menonaktifkan.
+const wantStream = (TTY || !!process.env.FBAI_FORCE_STREAM) && !process.env.FBAI_NO_STREAM;
+
+function c(s, code) { return COLOR ? `\x1b[${code}m${s}\x1b[0m` : s; }
+const cdim = s => c(s, "2");
+const cgrey = s => c(s, "90");
+const ccyan = s => c(s, "36");
+const cgreen = s => c(s, "32");
+const cred = s => c(s, "31");
+const cmag = s => c(s, "35");
+const cyel = s => c(s, "33");
+const cbold = s => c(s, "1");
+const cit = s => c(s, "3");
+const cund = s => c(s, "4;94");
+const codec = s => c(s, "38;5;221");
+
+function visible(s) { return s.replace(/\x1b\[[0-9;]*m/g, ""); }
+function padTo(s, w) { const v = visible(s); return v.length >= w ? s : s + " ".repeat(w - v.length); }
+
+// ---------- config ----------
+function loadConfig(flagPath) {
+  const p = flagPath || process.env.FBAI_CONFIG || CONFIG_PATH_DEFAULT;
+  if (!fs.existsSync(p)) {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(SAMPLE_CONFIG, null, 2) + "\n", "utf8");
+    return { cfg: null, path: p, created: true };
+  }
+  let json;
+  try { json = JSON.parse(fs.readFileSync(p, "utf8")); }
+  catch (e) { throw new Error(`config ${p} tidak valid: ${e.message}`); }
+  const providers = json.providers || {};
+  const keys = Object.keys(providers).filter(k => providers[k] && providers[k].baseUrl);
+  if (!keys.length) throw new Error(`config ${p}: tidak ada provider valid (butuh objek "providers" dengan "baseUrl")`);
+  const chosen = json.model || null;
+  let providerKey = null, modelName = null;
+  const allIds = [];
+  for (const k of keys) for (const m of (providers[k].models || [])) if (m && m.id) allIds.push(m.id);
+  const raw = chosen || allIds[0] || keys[0];
+  const parts = String(raw).split("/");
+  if (parts.length > 1) {
+    const pk = parts.shift();
+    if (providers[pk]) providerKey = pk;
+  }
+  if (!providerKey) providerKey = keys[0];
+  if (!providerKey || !providers[providerKey]) providerKey = keys[0];
+  modelName = raw.includes("/") ? raw.split("/").slice(1).join("/") : raw;
+  const prov = providers[providerKey];
+  return {
+    cfg: {
+      baseUrl: prov.baseUrl,
+      apiKey: prov.apiKey || "",
+      model: modelName,
+      timeout: Number(json.timeout_ms || 180000),
+    },
+    path: p, created: false, providerKey, rawModel: raw, allIds,
+  };
+}
+function endpointFor(baseUrl) {
+  let b = String(baseUrl).replace(/\/+$/, "");
+  if (!/\/chat\/completions$/.test(b)) b += "/chat/completions";
+  return b;
+}
+
+// ---------- markdown / tag renderer ----------
+function mdTextToAnsiLines(text) {
+  const out = [];
+  let fence = false;
+  for (const raw of String(text).split("\n")) {
+    const t = raw.trim();
+    if (!fence && /^```/.test(t)) { fence = true; out.push(cgrey("``` " + t.slice(3).trim())); continue; }
+    if (fence && /^```/.test(t)) { fence = false; out.push(cgrey("```")); continue; }
+    if (fence) { out.push(codec(raw)); continue; }
+    if (/^\s{0,3}#{1,4}\s/.test(raw)) { out.push(cbold(cmag(raw.replace(/^(\s*#{1,4}\s)/, m => cdim(m))))); continue; }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(raw)) { out.push(cdim(raw)); continue; }
+    if (/^>\s?/.test(raw)) { out.push(cdim("│ " + raw.replace(/^>\s?/, ""))); continue; }
+    if (/^\s*[-*+]\s+/.test(raw)) { const m = raw.match(/^(\s*[-*+])(\s+.*)$/); out.push(m ? m[1] + cgreen(m[2]) : raw); continue; }
+    if (/^\s*\d+[.)]\s+/.test(raw)) { const m = raw.match(/^(\s*\d+[.)])(\s+.*)$/); out.push(cbold(m[1]) + m[2]); continue; }
+    if (raw.trim() === "") { out.push(""); continue; }
+    out.push(inlineAnsi(raw));
+  }
+  return out;
+}
+
+function inlineAnsi(s) {
+  const re = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|<[a-zA-Z/][^<>]*>|\bhttps?:\/\/[^\s)<>]+)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(s))) {
+    const lead = s.slice(last, m.index).replace(/&/g, "&amp;");
+    if (lead) out += cdim(lead);
+    const tok = m[0];
+    if (tok.startsWith("**") && tok.endsWith("**")) out += cbold(tok.slice(2, -2));
+    else if (tok.startsWith("`") && tok.endsWith("`")) out += ccyan(tok.slice(1, -1));
+    else if (tok.startsWith("*") && tok.endsWith("*")) out += cit(tok.slice(1, -1));
+    else if (tok.startsWith("[")) { const mm = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/); if (mm) out += cund(mm[1]) + cdim(" " + mm[2]); else out += tok; }
+    else if (tok.startsWith("<")) out += cgrey(tok);
+    else out += cund(tok);
+    last = m.index + tok.length;
+  }
+  const tail = s.slice(last).replace(/&/g, "&amp;");
+  if (tail) out += cdim(tail);
+  return out;
+}
+
+function wrapStyled(line, w) {
+  if (visible(line).length <= w) return [line];
+  const res = [];
+  let acc = "", y = 0;
+  let i = 0;
+  const push = () => { res.push(acc); acc = ""; y = 0; };
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === "\x1b") { const j = line.indexOf("m", i); acc += line.slice(i, j + 1); i = j + 1; continue; }
+    if (y >= w) push();
+    acc += ch; y += 1; i += 1;
+  }
+  if (acc) res.push(acc);
+  return res;
+}
+
+// ---------- LiveBox (kotak pesan, merender ulang saat streaming) ----------
+class LiveBox {
+  constructor(title, opts = {}) {
+    this.title = title;
+    this.mode = opts.mode || "plain";
+    this.raw = "";
+    this.opened = false;
+    this.closed = false;
+    this.lines = 0;
+  }
+  append(s) { if (!s) return; this.opened = true; this.raw += s; }
+  buildRows() {
+    const W = boxW();
+    const styledLines = this.mode === "md" ? mdTextToAnsiLines(this.raw)
+      : String(this.raw).split("\n").map(l => (this.mode === "grey" ? cgrey(l) : l));
+    const body = [];
+    for (const line of styledLines) for (const ln of wrapStyled(line, W - 2)) body.push(ln);
+    const top = "╭─ " + this.title + " " + "─".repeat(Math.max(0, W - this.title.length - 3)) + "╮";
+    const bottom = "╰" + "─".repeat(W) + "╯";
+    return [top, ...body.map(l => "│ " + padTo(l, W - 2) + " │"), bottom];
+  }
+  render() {
+    if (!this.opened || this.closed) return;
+    if (TTY) {
+      const rows = this.buildRows();
+      if (this.lines > 0) process.stdout.write(`\x1b[${this.lines}A`);
+      for (let i = 0; i < rows.length; i++) process.stdout.write("\x1b[2K" + (i ? "\n" : "") + rows[i]);
+      process.stdout.write("\n");
+      this.lines = rows.length;
+    }
+    // non-tty: tunggu close2 (cetak sekali, final)
+  }
+  close2() {
+    if (!this.opened || this.closed) return;
+    const rows = this.buildRows();
+    if (TTY) {
+      if (this.lines > 0) process.stdout.write(`\x1b[${this.lines}A`);
+      for (let i = 0; i < rows.length; i++) process.stdout.write("\x1b[2K" + (i ? "\n" : "") + rows[i]);
+      process.stdout.write("\n");
+    } else {
+      for (let i = 0; i < rows.length; i++) process.stdout.write((i ? "\n" : "") + rows[i]);
+      process.stdout.write("\n");
+    }
+    this.closed = true;
+  }
+  showEmpty() { if (!this.opened && TTY) { process.stdout.write(cdim("…\n")); } }
+}
+
+// ---------- HTTP: buffered ----------
+function parseSSE(raw) {
+  let all = "";
+  for (const line of String(raw).split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t.startsWith("data:")) continue;
+    const payload = t.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    let chunk; try { chunk = JSON.parse(payload); } catch { continue; }
+    all = accumulateDelta(all, chunk);
+  }
+  if (!all) return { choices: [{ message: { role: "assistant", content: "" } }] };
+  return JSON.parse(all);
+}
+function accumulateDelta(base, chunk) {
+  const j = base ? JSON.parse(base) : { choices: [{ message: { role: "assistant", content: "" } }] };
+  const piece = chunk.choices && chunk.choices[0];
+  const m = j.choices[0].message;
+  if (piece) {
+    const d = piece.delta || piece.message || {};
+    if (d.content != null) m.content += strOf(d.content);
+    if (d.reasoning_content != null) m.reasoning_content = (m.reasoning_content || "") + strOf(d.reasoning_content);
+    for (const tc of d.tool_calls || []) accTool(m, tc);
+    if (piece.finish_reason) m.finish_reason = piece.finish_reason;
+  }
+  return JSON.stringify(j);
+}
+function strOf(x) {
+  if (typeof x === "string") return x;
+  if (Array.isArray(x)) return x.map(c => (typeof c === "string" ? c : (c && c.text) || "")).join("");
+  return "";
+}
+function accTool(m, tc) {
+  if (!m.tool_calls) m.tool_calls = [];
+  const key = tc.index ?? tc.id ?? m.tool_calls.length;
+  let slot = m.tool_calls.find(t => t._k === key);
+  if (!slot) { slot = { _k: key, id: "", type: "function", function: { name: "", arguments: "" } }; m.tool_calls.push(slot); }
+  if (tc.id) slot.id = tc.id;
+  if (tc.type) slot.type = tc.type;
+  if (tc.function) {
+    if (tc.function.name) slot.function.name += tc.function.name;
+    if (tc.function.arguments) slot.function.arguments += tc.function.arguments;
+  }
+}
+function normalizeMsg(m) {
+  if (!m) m = { role: "assistant", content: "" };
+  if (m.tool_calls) for (const t of m.tool_calls) delete t._k;
+  if (typeof m.content === "string") { /* ok */ }
+  else if (Array.isArray(m.content)) m.content = m.content.map(x => (typeof x === "string" ? x : (x && x.text) || "")).join("") || null;
+  else m.content = null;
+  return m;
+}
+
+async function chatCompletion(cfg, messages, tools) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), cfg.timeout);
+  try {
+    const res = await fetch(endpointFor(cfg.baseUrl), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: cfg.model, messages, tools, tool_choice: "auto", stream: false }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`API ${res.status} ${res.statusText}: ${txt.slice(0, 400)}`); }
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    const raw = await res.text();
+    let j;
+    if (ct.includes("text/event-stream") || /^\s*data:/.test(raw)) j = parseSSE(raw);
+    else { try { j = JSON.parse(raw); } catch (e) { if (/^\s*data:/.test(raw)) j = parseSSE(raw); else throw new Error(`respon bukan JSON: ${raw.slice(0, 200)}`); } }
+    const m = j.choices && j.choices[0] && (j.choices[0].message || j.choices[0].delta);
+    if (!m) throw new Error(`respon tanpa choices[0].message: ${JSON.stringify(j).slice(0, 300)}`);
+    return normalizeMsg(m);
+  } finally { clearTimeout(t); }
+}
+
+// ---------- HTTP: streaming ----------
+async function streamChat(cfg, messages, tools) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), cfg.timeout);
+  let res;
+  try {
+    res = await fetch(endpointFor(cfg.baseUrl), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: cfg.model, messages, tools, tool_choice: "auto", stream: true }),
+      signal: ctrl.signal,
+    });
+  } catch (e) { throw new Error(`fetch gagal: ${e.message}`); }
+  if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`API ${res.status} ${res.statusText}: ${txt.slice(0, 400)}`); }
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+  const msg = { role: "assistant", content: "" };
+  const boxR = new LiveBox("thinking", { mode: "grey" });
+  const boxC = new LiveBox("dikabuff", { mode: "md" });
+
+  if (!res.body || !ct.includes("text/event-stream")) {
+    const raw = await res.text();
+    let j;
+    try { j = raw.trim().startsWith("data:") ? parseSSE(raw) : JSON.parse(raw); }
+    catch (e) { throw new Error(`respon bukan SSE/JSON: ${raw.slice(0, 200)}`); }
+    const m = normalizeMsg(j.choices && j.choices[0] && (j.choices[0].message || j.choices[0].delta));
+    if (m.reasoning_content) { boxR.append(m.reasoning_content); boxR.close2(); }
+    if (m.content) { boxC.append(m.content); boxC.close2(); }
+    else if (!m.tool_calls || !m.tool_calls.length) boxC.showEmpty();
+    Object.assign(msg, m);
+    return msg;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const handleLine = line => {
+    const t = line.trim();
+    if (!t.startsWith("data:")) return;
+    const payload = t.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    let chunk; try { chunk = JSON.parse(payload); } catch { return; }
+    const piece = chunk.choices && chunk.choices[0];
+    if (!piece) return;
+    const d = piece.delta || piece.message || {};
+    if (d.reasoning_content != null) {
+      const x = strOf(d.reasoning_content);
+      if (x) { msg.reasoning_content = (msg.reasoning_content || "") + x; boxR.append(x); boxR.render(); }
+    }
+    if (d.content != null) {
+      const x = strOf(d.content);
+      if (x) {
+        if (boxR.opened && !boxR.closed) boxR.close2();
+        msg.content += x; boxC.append(x); boxC.render();
+      }
+    }
+    for (const tc of d.tool_calls || []) accTool(msg, tc);
+  };
+  for (;;) {
+    const { value } = await reader.read();
+    if (!value) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) !== -1) { handleLine(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
+  }
+  handleLine(buf);
+  if (boxR.opened && !boxR.closed) boxR.close2();
+  if (boxC.opened && !boxC.closed) boxC.close2();
+  if (!msg.content && (!msg.tool_calls || !msg.tool_calls.length)) boxC.showEmpty();
+  clearTimeout(t);
+  return normalizeMsg(msg);
+}
+
+// ---------- tools ----------
+function truncate(s, n = MAX_TOOL_OUT) {
+  const str = String(s);
+  return str.length <= n ? str : str.slice(0, n) + `\n…(output terpotong, ${str.length - n} chars lagi)`;
+}
+function listDirTool({ path: p }) {
+  const dir = p || ".";
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const out = entries.slice(0, 300).map(e => `${e.isDirectory() ? "dir " : "file"} ${e.name}`).join("\n");
+  return { ok: true, path: dir, count: entries.length, entries: out };
+}
+function readFileTool({ path: p, offset = 0, limit = 65536 }) {
+  if (!p) return { ok: false, error: "path wajib diisi" };
+  const buf = fs.readFileSync(p);
+  if (buf.includes(0)) return { ok: false, error: "file binary — pakai bash (xxd/head) untuk baca" };
+  const text = buf.toString("utf8");
+  const slice = text.slice(offset, offset + limit);
+  return { ok: true, path: p, total: text.length, offset, content: slice + (offset + limit < text.length ? `\n…(${text.length - offset - limit} chars lagi)` : "") };
+}
+function writeFileTool({ path: p, content }) {
+  if (!p) return { ok: false, error: "path wajib diisi" };
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, String(content ?? ""), "utf8");
+  return { ok: true, path: p, bytes: Buffer.byteLength(String(content ?? "")) };
+}
+function editFileTool({ path: p, oldString, newString }) {
+  if (!p || typeof oldString !== "string") return { ok: false, error: "path & oldString wajib diisi" };
+  const text = fs.readFileSync(p, "utf8");
+  const i = text.indexOf(oldString);
+  if (i === -1) return { ok: false, error: "oldString tidak ditemukan di file (periksa whitespace/exact match)" };
+  const out = text.slice(0, i) + String(newString ?? "") + text.slice(i + oldString.length);
+  fs.writeFileSync(p, out, "utf8");
+  return { ok: true, path: p, replaced: 1 };
+}
+function bashTool({ command, cwd }) {
+  return new Promise(resolve => {
+    if (!command) return resolve({ ok: false, error: "command wajib diisi" });
+    const dir = cwd || process.cwd();
+    const tmo = Number(process.env.FBAI_BASH_TIMEOUT || 120000);
+    const child = spawn("bash", ["-lc", String(command)], { cwd: dir, env: { ...process.env, TERM: "dumb" }, windowsHide: true });
+    let so = "", se = "";
+    const cap = (acc, chunk, which) => {
+      acc += chunk.toString("utf8");
+      if (acc.length > MAX_TOOL_OUT * 2) { acc = acc.slice(0, MAX_TOOL_OUT) + "\n…(terpotong)"; if (which === 0) child.stdout.pause(); else child.stderr.pause(); }
+      return acc;
+    };
+    child.stdout.on("data", d => { so = cap(so, d, 0); });
+    child.stderr.on("data", d => { se = cap(se, d, 1); });
+    const killer = setTimeout(() => child.kill("SIGKILL"), tmo);
+    child.on("error", err => { clearTimeout(killer); resolve({ ok: false, error: err.message }); });
+    child.on("close", code => {
+      clearTimeout(killer);
+      resolve({ ok: true, cwd: dir, exit_code: code, stdout: truncate(so), stderr: truncate(se) });
+    });
+  });
+}
+async function webFetchTool({ url, timeout = 30000 }) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeout);
+    const res = await fetch(url, { signal: ctrl.signal, redirect: "follow" });
+    clearTimeout(t);
+    const text = await res.text();
+    return { ok: true, status: res.status, url: res.url || url, contentType: res.headers.get("content-type") || "", chars: text.length, content: truncate(text, MAX_FETCH) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+function TOOLS(withSub) {
+  const arr = [
+    { type: "function", function: { name: "list_dir", description: "List files & folders in a directory.", parameters: { type: "object", properties: { path: { type: "string", description: "Directory path (default: cwd)." } }, required: [] } } },
+    { type: "function", function: { name: "read_file", description: "Read a text file. Binary files are rejected — use bash for those.", parameters: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer" }, limit: { type: "integer" } }, required: ["path"] } } },
+    { type: "function", function: { name: "write_file", description: "Write (create/overwrite) a file with UTF-8 content. Creates parent directories.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } } },
+    { type: "function", function: { name: "edit_file", description: "Replace oldString with newString in a file. oldString must match exactly (one occurrence required).", parameters: { type: "object", properties: { path: { type: "string" }, oldString: { type: "string" }, newString: { type: "string" } }, required: ["path", "oldString"] } } },
+    { type: "function", function: { name: "bash", description: "Run a shell command via bash -lc in a cwd. Use for anything terminal: build, test, grep, curl, pkg install, etc. stdout+stderr+exit code returned.", parameters: { type: "object", properties: { command: { type: "string" }, cwd: { type: "string" } }, required: ["command"] } } },
+    { type: "function", function: { name: "web_fetch", description: "HTTP GET a URL and return its text (max ~512KB). For simple page fetches; use bash+curl for POST/headers/download.", parameters: { type: "object", properties: { url: { type: "string" }, timeout: { type: "integer" } }, required: ["url"] } } },
+  ];
+  if (withSub) arr.push({ type: "function", function: { name: "subagent", description: "Delegate a self-contained subtask to a sub-agent (extra LLM round-trips). Use for parallel research or a big independent implementation chunk. Returns a concise report.", parameters: { type: "object", properties: { task: { type: "string", description: "Self-contained task description for the sub-agent, with paths and expectations." } }, required: ["task"] } } });
+  return arr;
+}
+
+// ---------- eksekusi tool (dipanggil agent loop) ----------
+async function runTool(name, args) {
+  if (name === "list_dir") return listDirTool(args);
+  if (name === "read_file") return readFileTool(args);
+  if (name === "write_file") return writeFileTool(args);
+  if (name === "edit_file") return editFileTool(args);
+  if (name === "bash") return await bashTool(args);
+  if (name === "web_fetch") return await webFetchTool(args);
+  return { ok: false, error: `tool tidak dikenal: ${name}` };
+}
+
+// ---------- agent loop: buffered (non-tty & subagent) ----------
+async function runAgent(cfg, task, { sub = false } = {}) {
+  const sys = sub ? SUB_SYS : MAIN_SYS;
+  const tools = sub ? TOOLS(false) : TOOLS(true);
+  const messages = [{ role: "system", content: sys }, { role: "user", content: task }];
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const m = await chatCompletion(cfg, messages, tools);
+    messages.push({ role: "assistant", content: m.content ?? null, tool_calls: m.tool_calls || undefined });
+    if (!m.tool_calls || !m.tool_calls.length) return (m.content || "").trim();
+    for (const tc of m.tool_calls) {
+      const fn = tc.function || {};
+      const name = fn.name || "?";
+      let args = {};
+      try { args = JSON.parse(fn.arguments || "{}"); } catch { args = { _raw: fn.arguments }; }
+      let result;
+      try { result = name === "subagent" ? await runAgent(cfg, args.task || "", { sub: true }) : await runTool(name, args); }
+      catch (e) { result = { ok: false, error: e.message }; }
+      messages.push({ role: "tool", tool_call_id: tc.id || `call_${round}_${name}`, content: JSON.stringify(result) });
+    }
+  }
+  throw new Error("agent melebihi jumlah putaran tool — minta model menyimpulkan sekarang");
+}
+
+// ---------- agent loop: streaming (tty, top-level) ----------
+async function streamTurn(cfg, userMessage) {
+  const messages = [{ role: "system", content: MAIN_SYS }, { role: "user", content: userMessage }];
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const m = await streamChat(cfg, messages, TOOLS(true));
+    messages.push({ role: "assistant", content: m.content ?? null, tool_calls: m.tool_calls || undefined });
+    if (!m.tool_calls || !m.tool_calls.length) return (m.content || "").trim();
+    for (const tc of m.tool_calls) {
+      const fn = tc.function || {};
+      const name = fn.name || "?";
+      let args = {};
+      try { args = JSON.parse(fn.arguments || "{}"); } catch { args = { _raw: fn.arguments }; }
+      console.log(`\n${cyel("⚙")} ${ccyan(name)} ${cdim(JSON.stringify(args).slice(0, 200))}`);
+      let result;
+      try { result = name === "subagent" ? await runAgent(cfg, args.task || "", { sub: true }) : await runTool(name, args); }
+      catch (e) { result = { ok: false, error: e.message }; }
+      const preview = truncate(JSON.stringify(result), 1200);
+      console.log(`${cgreen("✓")} ${cdim(preview)}`);
+      messages.push({ role: "tool", tool_call_id: tc.id || `call_${round}_${name}`, content: JSON.stringify(result) });
+    }
+  }
+  throw new Error("agent melebihi jumlah putaran tool — minta model menyimpulkan sekarang");
+}
+
+// ---------- UI / REPL ----------
+function printHelp() {
+  console.log(`dikabuff ${VERSION} — coding agent untuk Termux (BYO AI backend, openai-completions).
+
+CARA PAKAI:
+  dikabuff "tolong buatkan script python backup"
+  dikabuff                          # mode interaktif (REPL, streaming + thinking abu-abu)
+  dikabuff --model <id> "prompt"    # paksa model (id = prefix/model, mis. oc/deepseek-v4-flash-free)
+  dikabuff --config /path/config.json "prompt"
+  dikabuff --doctor                 # cek config + koneksi ke server AI
+
+CONFIG (bisa diedit bebas):
+  ${CONFIG_PATH_DEFAULT}
+  Skema: { "providers": { "<nama>": { "baseUrl": ".../v1", "api": "openai-completions",
+                        "apiKey": "...", "models": [ { "id": "<prefix>/<model>" } ] } } }
+  Env: FBAI_CONFIG (config), FBAI_BASH_TIMEOUT (ms), FBAI_NO_STREAM=1 (nonaktifkan streaming), FBAI_COLOR=1 (paksa warna).
+
+UI: kotak pesan chat, baris "thinking" abu-abu (reasoning_content model), warna otomatis
+    untuk markdown/tag: **bold** *italic* \`code\` \`\`\`fence\`\`\` heading, list, quote, <tag>, link/URL.
+
+TOOLS: list_dir, read_file, write_file, edit_file, bash (curl dsb tersedia), web_fetch, subagent.
+
+REPL: /new   /model <id>   /config   /help   /exit
+`);
+}
+
+async function repl(cfg) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  console.log(`${cmag("dikabuff")} ${cdim("v" + VERSION)} · model: ${cgreen(cfg.rawModel ?? (cfg.providerKey + "/" + cfg.cfg.model))} · config: ${cdim(cfg.path)}`);
+  console.log("Ketik " + cdim("/help") + " untuk bantuan, " + cdim("/exit") + " untuk keluar.\n");
+  const ask = () => rl.question(cmag("dikabuff> "), async ans => {
+    const a = ans.trim();
+    if (!a) return ask();
+    if (a === "/exit" || a === "/quit") return rl.close();
+    if (a === "/new") return ask();
+    if (a === "/help") { printHelp(); return ask(); }
+    if (a === "/config") { console.log(cdim(cfg.path) + "\n"); return ask(); }
+    if (a.startsWith("/model ")) { cfg.cfg.model = a.slice(7).trim(); console.log(`model → ${cgreen(cfg.cfg.model)}\n`); return ask(); }
+    rl.pause();
+    try {
+      const reply = await streamTurn(cfg.cfg, a);
+      if (reply) console.log(`\n${cmag("[ringkasan]")} ${cdim(reply.slice(0, 400))}${reply.length > 400 ? cdim(" …") : ""}`);
+    } catch (e) {
+      console.log(`\n${cred("error:")} ${e.message}`);
+    } finally {
+      rl.resume();
+      ask();
+    }
+  });
+  rl.on("close", () => process.exit(0));
+  ask();
+}
+
+async function doctor(cfg) {
+  console.log(`config  : ${cfg.path}`);
+  console.log(`provider: ${cfg.providerKey} (model: ${cfg.cfg.model})`);
+  console.log(`endpoint: ${endpointFor(cfg.cfg.baseUrl)}`);
+  console.log("mencoba koneksi…");
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 15000);
+    const res = await fetch(endpointFor(cfg.cfg.baseUrl), { method: "GET", signal: ctrl.signal });
+    console.log(`status: ${res.status} ${res.statusText} — endpoint AKTIF (server merespons; pastikan apiKey & model benar)`);
+  } catch (e) {
+    console.log(`GAGAL: ${e.message}`);
+    console.log("pastikan server AI berjalan (mis. di localhost:7777) dan baseUrl benar.");
+  }
+}
+
+async function main(argv) {
+  let configFlag = null, modelFlag = null, help = false, doc = false, prompt = null;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--config" || a === "-c") configFlag = argv[++i];
+    else if (a === "--model" || a === "-m") modelFlag = argv[++i];
+    else if (a === "--help" || a === "-h") help = true;
+    else if (a === "--doctor") doc = true;
+    else if (a === "--version" || a === "-v") { console.log(VERSION); return; }
+    else prompt = a;
+  }
+  if (help) { printHelp(); return; }
+
+  const loaded = loadConfig(configFlag);
+  if (loaded.created) {
+    console.log(`config baru dibuat: ${loaded.path}`);
+    console.log("Edit file itu (baseUrl/apiKey/model), lalu jalankan lagi. Contoh isi:");
+    console.log(JSON.stringify(SAMPLE_CONFIG, null, 2));
+    return;
+  }
+  if (doc) { doctor(loaded); return; }
+  if (modelFlag) {
+    const parts = String(modelFlag).split("/");
+    loaded.cfg.model = parts.length > 1 ? parts.slice(1).join("/") : modelFlag;
+    loaded.rawModel = modelFlag;
+  }
+
+  if (prompt) {
+    if (wantStream) {
+      await streamTurn(loaded.cfg, prompt);
+    } else {
+      const reply = await runAgent(loaded.cfg, prompt);
+      console.log(`\n${cmag("dikabuff:")} ${reply}`);
+    }
+    return;
+  }
+  if (!process.stdin.isTTY) {
+    const buf = fs.readFileSync(0, "utf8").trim();
+    if (buf) {
+      if (wantStream) await streamTurn(loaded.cfg, buf);
+      else {
+        const reply = await runAgent(loaded.cfg, buf);
+        console.log(`\n${cmag("dikabuff:")} ${reply}`);
+      }
+    }
+    return;
+  }
+  await repl(loaded);
+}
+
+main(process.argv.slice(2)).catch(e => {
+  console.error(`\n${cred("error:")} ${e.message}`);
+  process.exit(1);
+});

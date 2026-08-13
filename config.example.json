@@ -1,0 +1,14 @@
+{
+  "providers": {
+    "ollama": {
+      "baseUrl": "https://your-gateway.example.com/v1",
+      "api": "openai-completions",
+      "apiKey": "sk-REPLACE_ME",
+      "models": [
+        {
+          "id": "your-model-id"
+        }
+      ]
+    }
+  }
+}

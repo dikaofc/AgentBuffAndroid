@@ -1,0 +1,44 @@
+{
+  "name": "@dikabuff/app",
+  "version": "0.5.0",
+  "description": "DikaBuff Agent CLI — terminal application (composer + bin)",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dikabuff": "dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run tests",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@dikabuff/shared": "0.5.0",
+    "@dikabuff/config": "0.5.0",
+    "@dikabuff/memory": "0.5.0",
+    "@dikabuff/tools": "0.5.0",
+    "@dikabuff/agent-core": "0.5.0",
+    "@dikabuff/plugins": "0.5.0",
+    "@dikabuff/terminal-ui": "0.5.0",
+    "@dikabuff/cli": "0.5.0",
+    "commander": "^12.1.0",
+    "@dikabuff/learner": "0.5.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10"
+  }
+}
