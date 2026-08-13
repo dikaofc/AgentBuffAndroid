@@ -57,7 +57,7 @@ gateways (OmniRoute, 9Router, OpenRouter, or any local server).
 | | |
 |---|---|
 | 🖥️ **Beautiful Ink 5 TUI** | chat panel, activity line, tool-execution panel, sub-agent panel, diff viewer, permission dialogs, file tree sidebar |
-| 🤖 **Agent loop, 5 modes** | `code` · `plan` · `review` · `fix` · `analyze` with a planner, context packing & auto-compaction |
+| 🤖 **Agent loop, 5 modes** | `code` · `plan` · `debug` · `research` · `review` with a planner & automatic context compaction |
 | 🛠️ **17 built-in tools** | `read_file` · `search_files` · `write_file` · `edit_file` · `execute_command` · `project_scan` · `git_status` · `git_diff` · `run_tests` · `lint` · `web_search` · `ask_user` · `subagent` · `code_summary` · `dependency_analysis` · `install_package` · `delete_file` |
 | 🔐 **Permission system** | 4 modes (`default` · `acceptEdits` · `plan` · `bypassPermissions`) + per-tool permission dialogs |
 | 🧠 **Long-term memory** | KV store, session store, project notes (`DIKABUFF.md` auto-loaded) |
@@ -148,7 +148,7 @@ dikabuff config theme catppuccin           # switch theme
 | `/memory` | inspect long-term memory |
 | `/doctor` | diagnostics |
 | `/learn` | auto-learning status |
-| `/review` · `/fix` | review / fix the working tree |
+| `/review` | review the working tree |
 | `/new` · `/resume` | new / resume session |
 | `/help` · `/clear` · `/quit` | help / clear / quit |
 
